@@ -92,6 +92,28 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
 	if err != nil {
 		log.Panicf("Failed to understand Routing config  Please check: https://xtls.github.io/config/routing.html for help: %s", err)
 	}
+
+	// Observatory config
+	coreObservatoryConfig := &conf.ObservatoryConfig{}
+	if panelConfig.ObservatoryConfigPath != "" {
+		if data, err := os.ReadFile(panelConfig.ObservatoryConfigPath); err != nil {
+			log.Panicf("Failed to read Observatory config file at: %s", panelConfig.ObservatoryConfigPath)
+		} else {
+			if err = json.Unmarshal(data, coreObservatoryConfig); err != nil {
+				log.Panicf("Failed to unmarshal Observatory config: %s", panelConfig.ObservatoryConfigPath)
+			}
+		}
+	}
+	var observatoryConfig *serial.TypedMessage
+	if coreObservatoryConfig != nil && len(coreObservatoryConfig.SubjectSelector) > 0 {
+		obsConfig, err := coreObservatoryConfig.Build()
+		if err != nil {
+			log.Panicf("Failed to understand Observatory config, Please check: https://xtls.github.io/config/observatory.html for help: %s", err)
+		}
+		observatoryConfig = serial.ToTypedMessage(obsConfig)
+		log.Info("Observatory config loaded successfully")
+	}
+
 	// Custom Inbound config
 	var coreCustomInboundConfig []conf.InboundDetourConfig
 	if panelConfig.InboundConfigPath != "" {
@@ -136,17 +158,23 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
 	corePolicyConfig.Levels = map[uint32]*conf.Policy{0: levelPolicyConfig}
 	policyConfig, _ := corePolicyConfig.Build()
 	// Build Core Config
+	appConfig := []*serial.TypedMessage{
+		serial.ToTypedMessage(coreLogConfig.Build()),
+		serial.ToTypedMessage(&mydispatcher.Config{}),
+		serial.ToTypedMessage(&stats.Config{}),
+		serial.ToTypedMessage(&proxyman.InboundConfig{}),
+		serial.ToTypedMessage(&proxyman.OutboundConfig{}),
+		serial.ToTypedMessage(policyConfig),
+		serial.ToTypedMessage(dnsConfig),
+		serial.ToTypedMessage(routeConfig),
+	}
+	// Add Observatory config if available
+	if observatoryConfig != nil {
+		appConfig = append(appConfig, observatoryConfig)
+		log.Info("Observatory module enabled")
+	}
 	config := &core.Config{
-		App: []*serial.TypedMessage{
-			serial.ToTypedMessage(coreLogConfig.Build()),
-			serial.ToTypedMessage(&mydispatcher.Config{}),
-			serial.ToTypedMessage(&stats.Config{}),
-			serial.ToTypedMessage(&proxyman.InboundConfig{}),
-			serial.ToTypedMessage(&proxyman.OutboundConfig{}),
-			serial.ToTypedMessage(policyConfig),
-			serial.ToTypedMessage(dnsConfig),
-			serial.ToTypedMessage(routeConfig),
-		},
+		App:      appConfig,
 		Inbound:  inBoundConfig,
 		Outbound: outBoundConfig,
 	}
