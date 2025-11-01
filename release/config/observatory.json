@@ -1,0 +1,10 @@
+{
+  "subjectSelector": [
+    "rdp-direct",
+    "rdp-proxy-1",
+    "rdp-proxy-2"
+  ],
+  "probeURL": "https://www.gstatic.com/generate_204",
+  "probeInterval": "10m",
+  "enableConcurrency": true
+}
