@@ -7,9 +7,9 @@ import (
 )
 
 var (
-	version  = "0.9.5"
+	version  = "0.9.6-observatory"
 	codename = "XrayR"
-	intro    = "A Xray backend that supports many panels"
+	intro    = "A Xray backend that supports many panels (with Observatory support)"
 )
 
 func init() {
