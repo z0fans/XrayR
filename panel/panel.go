@@ -93,25 +93,37 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
 		log.Panicf("Failed to understand Routing config  Please check: https://xtls.github.io/config/routing.html for help: %s", err)
 	}
 
-	// Observatory config
-	coreObservatoryConfig := &conf.ObservatoryConfig{}
+	// Observatory config - support both Observatory and BurstObservatory
+	var observatoryConfig *serial.TypedMessage
 	if panelConfig.ObservatoryConfigPath != "" {
 		if data, err := os.ReadFile(panelConfig.ObservatoryConfigPath); err != nil {
 			log.Panicf("Failed to read Observatory config file at: %s", panelConfig.ObservatoryConfigPath)
 		} else {
-			if err = json.Unmarshal(data, coreObservatoryConfig); err != nil {
-				log.Panicf("Failed to unmarshal Observatory config: %s", panelConfig.ObservatoryConfigPath)
+			// Try BurstObservatory first (has pingConfig)
+			coreBurstObsConfig := &conf.BurstObservatoryConfig{}
+			if err = json.Unmarshal(data, coreBurstObsConfig); err == nil && coreBurstObsConfig.PingConfig != nil {
+				obsConfig, buildErr := coreBurstObsConfig.Build()
+				if buildErr != nil {
+					log.Panicf("Failed to understand BurstObservatory config: %s", buildErr)
+				}
+				observatoryConfig = serial.ToTypedMessage(obsConfig)
+				log.Info("BurstObservatory config loaded successfully")
+			} else {
+				// Fallback to standard Observatory (has probeURL)
+				coreObsConfig := &conf.ObservatoryConfig{}
+				if err = json.Unmarshal(data, coreObsConfig); err != nil {
+					log.Panicf("Failed to unmarshal Observatory config: %s", err)
+				}
+				if len(coreObsConfig.SubjectSelector) > 0 {
+					obsConfig, buildErr := coreObsConfig.Build()
+					if buildErr != nil {
+						log.Panicf("Failed to understand Observatory config: %s", buildErr)
+					}
+					observatoryConfig = serial.ToTypedMessage(obsConfig)
+					log.Info("Observatory config loaded successfully")
+				}
 			}
 		}
-	}
-	var observatoryConfig *serial.TypedMessage
-	if coreObservatoryConfig != nil && len(coreObservatoryConfig.SubjectSelector) > 0 {
-		obsConfig, err := coreObservatoryConfig.Build()
-		if err != nil {
-			log.Panicf("Failed to understand Observatory config, Please check: https://xtls.github.io/config/observatory.html for help: %s", err)
-		}
-		observatoryConfig = serial.ToTypedMessage(obsConfig)
-		log.Info("Observatory config loaded successfully")
 	}
 
 	// Custom Inbound config
