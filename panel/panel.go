@@ -99,17 +99,27 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
 		if data, err := os.ReadFile(panelConfig.ObservatoryConfigPath); err != nil {
 			log.Panicf("Failed to read Observatory config file at: %s", panelConfig.ObservatoryConfigPath)
 		} else {
-			// Try BurstObservatory first (has pingConfig)
-			coreBurstObsConfig := &conf.BurstObservatoryConfig{}
-			if err = json.Unmarshal(data, coreBurstObsConfig); err == nil && coreBurstObsConfig.PingConfig != nil {
+			// Parse as generic JSON to determine type
+			var configCheck map[string]interface{}
+			if err = json.Unmarshal(data, &configCheck); err != nil {
+				log.Panicf("Failed to parse Observatory config: %s", err)
+			}
+
+			// Check if it's BurstObservatory (has "pingConfig" field)
+			if _, hasPingConfig := configCheck["pingConfig"]; hasPingConfig {
+				// This is BurstObservatory
+				coreBurstObsConfig := &conf.BurstObservatoryConfig{}
+				if err = json.Unmarshal(data, coreBurstObsConfig); err != nil {
+					log.Panicf("Failed to unmarshal BurstObservatory config: %s", err)
+				}
 				obsConfig, buildErr := coreBurstObsConfig.Build()
 				if buildErr != nil {
 					log.Panicf("Failed to understand BurstObservatory config: %s", buildErr)
 				}
 				observatoryConfig = serial.ToTypedMessage(obsConfig)
 				log.Info("BurstObservatory config loaded successfully")
-			} else {
-				// Fallback to standard Observatory (has probeURL)
+			} else if _, hasProbeURL := configCheck["probeUrl"]; hasProbeURL {
+				// This is standard Observatory
 				coreObsConfig := &conf.ObservatoryConfig{}
 				if err = json.Unmarshal(data, coreObsConfig); err != nil {
 					log.Panicf("Failed to unmarshal Observatory config: %s", err)
@@ -122,6 +132,8 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
 					observatoryConfig = serial.ToTypedMessage(obsConfig)
 					log.Info("Observatory config loaded successfully")
 				}
+			} else {
+				log.Warn("Observatory config file does not contain valid probeUrl or pingConfig, skipping")
 			}
 		}
 	}
